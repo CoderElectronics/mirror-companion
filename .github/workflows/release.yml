@@ -1,0 +1,95 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  TINYJS_VERSION: v0.58.1
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            # One Mac builds both CPUs; the second publish keeps the first's zip.
+            publish: tinyjs publish --arch arm64 && tinyjs publish --arch x86_64
+          # Linux must be built on the oldest glibc we support (22.04 = 2.35),
+          # otherwise the binaries fail to load on older distros.
+          - name: Linux x86_64
+            os: ubuntu-22.04
+            publish: tinyjs publish
+          - name: Linux arm64
+            os: ubuntu-22.04-arm
+            publish: tinyjs publish
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install WebKitGTK runtime (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0
+
+      - name: Install tinyjs
+        run: |
+          curl -fsSL https://tinyjs.app/install | sh
+          echo "$HOME/.tinyjs/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
+
+      - run: npm ci
+
+      - name: Build and package
+        run: ${{ matrix.publish }}
+
+      - name: Collect artifacts
+        run: |
+          mkdir out
+          cp dist/publish/*.zip dist/publish/*.tar.gz out/ 2>/dev/null || true
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ runner.os }}-${{ runner.arch }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: Publish rolling release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: build-*
+          merge-multiple: true
+
+      - run: ls -l out
+
+      # Recreate the `latest` release (and move its tag) on every push.
+      - name: Update rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create latest out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Latest build" \
+            --notes "Automated build of ${GITHUB_SHA::7} from \`${GITHUB_REF_NAME}\`." \
+            --prerelease
