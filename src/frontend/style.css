@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Org01";
+  src: url("./org_01.ttf") format("truetype");
+}
+
+@theme {
+  --font-pixel: "Org01", ui-monospace, monospace;
+  --color-ink: #0d0d0f;
+  --color-panel: #151518;
+  --color-raised: #1d1d21;
+  --color-line: #2a2a30;
+  --color-accent: #a3182a;
+  --color-accent-hi: #c21e33;
+}
+
+html, body { background: var(--color-ink); color: #d4d4d8; }
+body { -webkit-font-smoothing: antialiased; user-select: none; }
+
+.pixel {
+  font-family: var(--font-pixel);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  letter-spacing: 0.04em;
+}
+
+[x-cloak] { display: none !important; }

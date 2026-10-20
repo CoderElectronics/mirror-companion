@@ -1,0 +1,19 @@
+{
+  "name": "mirror-companion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "vite build --base=./"
+  },
+  "dependencies": {
+    "alpinejs": "^3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/alpinejs": "^3",
+    "tailwindcss": "^4",
+    "vite": "^7"
+  }
+}

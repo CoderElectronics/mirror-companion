@@ -1,0 +1,16 @@
+{
+  "$schema": "https://tinyjs.app/schema/tinyjs.schema.json",
+  "name": "mirror-companion",
+  "title": "Mirror Companion",
+  "size": "960x640",
+  "id": "com.mirror.companion",
+  "version": "0.1.0",
+  "minTinyjsVersion": "0.58.1",
+  "backend": "src/backend/main.js",
+  "frontend": {
+    "build": "npm run build",
+    "dist": "dist",
+    "dev": "npm run dev",
+    "devUrl": "http://127.0.0.1:5173"
+  }
+}

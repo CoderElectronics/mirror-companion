@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mirror Companion</title>
+  <script type="module" src="./main.js"></script>
+</head>
+<body class="h-screen flex flex-col text-sm" x-data="companion" x-init="init()" x-cloak @keydown.escape.window="closeAdd(); closeFirmware()">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between px-6 h-16 shrink-0 border-b border-line" data-tiny-drag>
+    <h1 class="pixel text-[24px] text-white leading-none">Mirror Companion</h1>
+    <div x-show="connected" class="flex items-center gap-3">
+      <span class="text-zinc-500 font-mono text-xs" x-text="port.replace('/dev/', '')"></span>
+      <button @click="openFirmware()" :disabled="busy" class="px-3 py-1.5 bg-raised hover:bg-line disabled:opacity-40">Firmware</button>
+      <button @click="loadLibrary()" :disabled="busy" class="px-3 py-1.5 bg-raised hover:bg-line disabled:opacity-40">Reload</button>
+      <button @click="disconnect()" :disabled="busy" class="px-3 py-1.5 bg-raised hover:bg-line disabled:opacity-40">Disconnect</button>
+    </div>
+  </header>
+
+  <!-- Connect card -->
+  <main x-show="!connected" class="flex-1 grid place-items-center p-6">
+    <div class="w-full max-w-sm bg-panel border border-line p-6 shadow-2xl shadow-black/50">
+      <h2 class="pixel text-[16px] text-white mb-1">Connect a device</h2>
+      <p class="text-zinc-500 mb-5">Choose the serial port your Mirror device is on.</p>
+
+      <div class="flex gap-2 mb-3">
+        <select x-model="port" :disabled="connecting" class="flex-1 min-w-0 bg-raised border border-line px-3 py-2 outline-none focus:border-accent">
+          <option value="">Select a port…</option>
+          <template x-for="p in ports" :key="p">
+            <option :value="p" x-text="p.replace('/dev/', '')"></option>
+          </template>
+        </select>
+        <button @click="refreshPorts()" :disabled="connecting" title="Rescan ports" class="px-3 bg-raised hover:bg-line disabled:opacity-40">↻</button>
+      </div>
+
+      <p x-show="ports.length === 0" class="text-zinc-500 mb-3">No ports found. Plug the device in and rescan.</p>
+      <p x-show="connectError" x-text="connectError" class="text-accent-hi mb-3 break-words"></p>
+
+      <button @click="connect()" :disabled="!port || connecting"
+              class="w-full py-2.5 bg-accent hover:bg-accent-hi disabled:opacity-40 disabled:hover:bg-accent text-white font-medium">
+        <span x-text="connecting ? 'Connecting…' : 'Connect'"></span>
+      </button>
+    </div>
+  </main>
+
+  <!-- Two columns -->
+  <main x-show="connected" class="flex-1 grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6 p-6 min-h-0">
+
+    <!-- Drop box -->
+    <section class="flex flex-col min-h-0">
+      <h2 class="pixel text-[16px] text-white mb-3">Add</h2>
+      <button @click="browse()" :disabled="busy"
+              class="flex-1 flex flex-col items-center justify-center gap-3 border-2 border-dashed border-line hover:border-accent hover:bg-panel transition-colors disabled:opacity-50 text-center p-6">
+        <svg viewBox="0 0 12 12" class="size-14 text-accent" fill="currentColor" shape-rendering="crispEdges">
+          <path d="M5 1h2v1H5zM4 2h1v1H4zM7 2h1v1H7zM3 3h1v1H3zM8 3h1v1H8zM5 3h2v6H5zM1 9h1v2H1zM10 9h1v2h-1zM2 10h8v1H2z"/>
+        </svg>
+        <span class="text-base text-zinc-200">Drop <span class="font-mono text-accent-hi">.mbin</span> files here</span>
+        <span class="text-zinc-500">or click to browse</span>
+      </button>
+    </section>
+
+    <!-- Library grid -->
+    <section class="flex flex-col min-h-0">
+      <div class="flex items-baseline justify-between mb-3">
+        <h2 class="pixel text-[16px] text-white">On device</h2>
+        <span class="text-zinc-500 text-xs" x-show="library" x-text="`${library?.length ?? 0} item${library?.length === 1 ? '' : 's'}`"></span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto min-h-0">
+        <p x-show="library && library.length === 0" class="text-zinc-500">Nothing installed yet.</p>
+        <p x-show="!library" class="text-zinc-500">Loading…</p>
+
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-3">
+          <template x-for="item in library" :key="item.path">
+            <div class="group relative bg-panel border border-line hover:border-zinc-600 p-3 flex flex-col items-center gap-2">
+              <svg viewBox="0 0 12 12" class="size-12" class="text-accent-hi"
+                   fill="currentColor" shape-rendering="crispEdges">
+                <path x-show="item.kind === 'face'" d="M3 1h6v1H3zM3 10h6v1H3zM1 3h1v6H1zM10 3h1v6h-1zM2 2h1v1H2zM9 2h1v1H9zM2 9h1v1H2zM9 9h1v1H9zM6 3h1v4H6zM6 6h3v1H6z"/>
+                <path x-show="item.kind === 'app'" d="M1 1h4v4H1zM7 1h4v4H7zM1 7h4v4H1zM7 7h4v4H7z"/>
+              </svg>
+              <span class="w-full truncate text-center text-xs text-zinc-300" x-text="item.label" :title="item.name"></span>
+              <span class="pixel text-[8px] text-zinc-500 uppercase" x-text="item.kind"></span>
+
+              <button @click="remove(item)" :disabled="busy" title="Delete"
+                      class="absolute top-1 right-1 size-6 grid place-items-center text-zinc-500 hover:text-white hover:bg-accent opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:hidden">
+                <svg viewBox="0 0 8 8" class="size-3" fill="currentColor" shape-rendering="crispEdges">
+                  <path d="M1 1h2v1H1zM5 1h2v1H5zM2 2h1v1H2zM5 2h1v1H5zM3 3h2v2H3zM2 5h1v1H2zM5 5h1v1H5zM1 6h2v1H1zM5 6h2v1H5z"/>
+                </svg>
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toasts -->
+  <div class="fixed bottom-4 left-1/2 -translate-x-1/2 flex flex-col gap-2 items-center pointer-events-none z-50">
+    <template x-for="t in toasts" :key="t.id">
+      <div x-show="t.visible" x-transition.opacity.duration.500ms
+           class="px-4 py-2 border text-sm max-w-md break-words"
+           :class="t.error ? 'bg-accent text-white border-accent-hi' : 'bg-raised text-zinc-200 border-line'" x-text="t.text"></div>
+    </template>
+  </div>
+
+  <!-- Firmware popover -->
+  <div x-show="fwOpen" class="fixed inset-0 z-40 grid place-items-center bg-black/70 p-6" @click.self="closeFirmware()">
+    <div class="w-full max-w-md flex flex-col bg-panel border border-line shadow-2xl shadow-black/60">
+      <div class="flex items-center justify-between px-5 h-14 border-b border-line">
+        <h2 class="pixel text-[16px] text-white">Firmware update</h2>
+        <button @click="closeFirmware()" :disabled="busy" class="text-zinc-500 hover:text-white disabled:opacity-40 px-2">✕</button>
+      </div>
+
+      <div class="p-5">
+        <button x-show="!fw" @click="browseFirmware()"
+                class="w-full h-40 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-line hover:border-accent hover:bg-raised transition-colors">
+          <span class="text-base text-zinc-200">Drop a signed <span class="font-mono text-accent-hi">.bin</span> here</span>
+          <span class="text-zinc-500">or click to browse</span>
+        </button>
+
+        <div x-show="fw" class="bg-raised border border-line p-4">
+          <div class="truncate text-base text-white font-mono" x-text="fw ? basename(fw.path) : ''"></div>
+          <div class="text-xs text-zinc-400 mt-1" x-text="fw ? fmtSize(fw.size) : ''"></div>
+          <p x-show="fw?.uploaded" class="text-xs text-emerald-400 mt-2">Uploaded. Reset the device to apply it.</p>
+          <button x-show="fw && !fw.uploaded" @click="fw = null" :disabled="busy" class="text-xs text-zinc-500 hover:text-white disabled:opacity-40 mt-2">Choose a different file</button>
+        </div>
+      </div>
+
+      <div class="p-5 pt-0 space-y-2">
+        <button x-show="!fw?.uploaded" @click="submitFirmware()" :disabled="busy || !fw"
+                class="relative overflow-hidden w-full h-14 bg-accent hover:bg-accent-hi disabled:hover:bg-accent disabled:opacity-60 text-white text-lg font-medium flex items-center justify-center">
+          <div x-show="busy" class="absolute inset-y-0 left-0 bg-accent-hi transition-all" :style="`width: ${progress}%`"></div>
+          <span class="relative" x-text="busy ? `Uploading ${progress}%` : 'Upload firmware'"></span>
+        </button>
+        <button x-show="fw?.uploaded" @click="resetDevice()" :disabled="busy"
+                class="w-full h-14 bg-accent hover:bg-accent-hi disabled:opacity-60 text-white text-lg font-medium">Reset device</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add popover -->
+  <div x-show="pending" class="fixed inset-0 z-40 grid place-items-center bg-black/70 p-6" @click.self="closeAdd()">
+    <div class="w-full max-w-xl max-h-full flex flex-col bg-panel border border-line shadow-2xl shadow-black/60">
+      <div class="flex items-center justify-between px-5 h-14 border-b border-line shrink-0">
+        <h2 class="pixel text-[16px] text-white">Add to device</h2>
+        <button @click="closeAdd()" :disabled="busy" class="text-zinc-500 hover:text-white disabled:opacity-40 px-2">✕</button>
+      </div>
+
+      <div class="overflow-y-auto p-5 space-y-3 min-h-0">
+        <template x-for="f in pending" :key="f.path">
+          <div class="flex gap-4 bg-raised border border-line p-3">
+            <!-- 12x12 icon preview -->
+            <div class="grid grid-cols-12 size-24 shrink-0 bg-black p-1.5 content-center" style="image-rendering: pixelated">
+              <template x-for="(on, i) in f.cells" :key="i">
+                <div class="aspect-square" :class="on ? 'bg-zinc-100' : ''"></div>
+              </template>
+            </div>
+
+            <div class="flex-1 min-w-0 flex flex-col">
+              <div class="truncate text-base text-white" x-text="f.valid ? (f.name || 'Untitled') : basename(f.path)"></div>
+              <dl x-show="f.valid" class="grid grid-cols-[auto_1fr] gap-x-3 text-xs text-zinc-400 mt-1">
+                <dt class="text-zinc-600">Author</dt><dd class="truncate" x-text="f.author || '—'"></dd>
+                <dt class="text-zinc-600">Version</dt><dd x-text="f.version"></dd>
+                <dt class="text-zinc-600">Size</dt><dd x-text="fmtSize(f.size)"></dd>
+                <dt class="text-zinc-600">File</dt><dd class="truncate font-mono" x-text="basename(f.path)"></dd>
+              </dl>
+              <p x-show="!f.valid" class="text-xs text-accent-hi mt-1">No metadata header found — this file will be skipped.</p>
+              <p x-show="f.valid && !f.magicOk" class="text-xs text-amber-500 mt-1">Unrecognized magic number.</p>
+              <p x-show="f.valid && exists(f)" class="text-xs text-amber-500 mt-1">Replaces an existing file.</p>
+
+              <div class="mt-auto pt-2 flex" x-show="f.valid">
+                <button @click="f.target = 'faces'" :disabled="busy" class="px-3 py-1 text-xs border"
+                        :class="f.target === 'faces' ? 'bg-accent border-accent text-white' : 'border-line text-zinc-400 hover:text-white'">Face</button>
+                <button @click="f.target = 'apps'" :disabled="busy" class="px-3 py-1 text-xs border border-l-0"
+                        :class="f.target === 'apps' ? 'bg-accent border-accent text-white' : 'border-line text-zinc-400 hover:text-white'">App</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="p-5 border-t border-line shrink-0">
+        <button @click="submitAdd()" :disabled="busy || !validPending.length"
+                class="relative overflow-hidden w-full h-14 bg-accent hover:bg-accent-hi disabled:hover:bg-accent disabled:opacity-60 text-white text-lg font-medium flex items-center justify-center gap-3">
+          <div x-show="busy" class="absolute inset-y-0 left-0 bg-accent-hi transition-all" :style="`width: ${progress}%`"></div>
+          <span class="relative flex items-center gap-3">
+            <span x-text="busy ? `Uploading ${progress}%` : 'Add'"></span>
+            <svg x-show="!busy" viewBox="0 0 12 12" class="size-5" fill="currentColor" shape-rendering="crispEdges">
+              <path d="M1 5h8v2H1zM7 3h2v2H7zM7 7h2v2H7zM9 4h1v1H9zM9 7h1v1H9zM10 5h1v2h-1z"/>
+            </svg>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
